@@ -23,6 +23,7 @@ export type ChatResponse = {
   message: ChatMessage;
   citations: Citation[];
   contextFiles: string[];
+  model: string;
   provider: string;
   searchStatus: "disabled" | "not_configured" | "enabled";
 };

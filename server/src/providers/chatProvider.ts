@@ -3,40 +3,16 @@ import { buildContextBlock } from "../services/contextSource.js";
 
 export type ChatProvider = {
   name: string;
+  model: string;
   complete(request: ChatRequest, contextDocuments: ContextDocument[]): Promise<ChatResponse>;
 };
-
-export class DevelopmentChatProvider implements ChatProvider {
-  readonly name = "development";
-
-  async complete(request: ChatRequest, contextDocuments: ContextDocument[]): Promise<ChatResponse> {
-    const latestUserMessage = [...request.messages].reverse().find((message) => message.role === "user");
-    const contextList = contextDocuments.map((document) => document.name).join(", ") || "none";
-    const personality = request.personality.trim() || "a helpful, clear assistant";
-
-    return {
-      message: {
-        role: "assistant",
-        content:
-          `Development provider active.\n\n` +
-          `Personality: ${personality}\n\n` +
-          `Loaded context files: ${contextList}\n\n` +
-          `You said: ${latestUserMessage?.content ?? ""}`
-      },
-      citations: [],
-      contextFiles: contextDocuments.map((document) => document.name),
-      provider: this.name,
-      searchStatus: request.useWebSearch ? "not_configured" : "disabled"
-    };
-  }
-}
 
 export class OpenAiResponsesProvider implements ChatProvider {
   readonly name = "openai";
 
   constructor(
     private readonly apiKey: string,
-    private readonly model: string,
+    readonly model: string,
     private readonly enableHostedWebSearch: boolean
   ) {}
 
@@ -67,7 +43,6 @@ export class OpenAiResponsesProvider implements ChatProvider {
       },
       body: JSON.stringify(body)
     });
-
     if (!response.ok) {
       const detail = await response.text();
       throw new Error(`OpenAI request failed with ${response.status}: ${detail}`);
@@ -84,8 +59,74 @@ export class OpenAiResponsesProvider implements ChatProvider {
       },
       citations,
       contextFiles: contextDocuments.map((document) => document.name),
+      model: this.model,
       provider: this.name,
       searchStatus: request.useWebSearch && this.enableHostedWebSearch ? "enabled" : request.useWebSearch ? "not_configured" : "disabled"
+    };
+  }
+}
+
+export class GeminiGenerateContentProvider implements ChatProvider {
+  readonly name = "gemini";
+
+  constructor(
+    private readonly apiKey: string,
+    readonly model: string,
+    private readonly enableGoogleSearch: boolean
+  ) {}
+
+  async complete(request: ChatRequest, contextDocuments: ContextDocument[]): Promise<ChatResponse> {
+    const instructions = [
+      "You are a configurable local-first chatbot.",
+      "Prefer the provided local context when it is relevant.",
+      "If the local context does not contain the answer, say so clearly.",
+      `Personality: ${request.personality.trim() || "helpful, direct, and warm"}`,
+      `Local context:\n${buildContextBlock(contextDocuments)}`
+    ].join("\n\n");
+
+    const body = {
+      systemInstruction: {
+        parts: [{ text: instructions }]
+      },
+      contents: request.messages.map((message) => ({
+        role: message.role === "assistant" ? "model" : "user",
+        parts: [{ text: message.content }]
+      })),
+      tools: request.useWebSearch && this.enableGoogleSearch ? [{ google_search: {} }] : undefined
+    };
+
+    const modelName = this.model.startsWith("models/") ? this.model.slice("models/".length) : this.model;
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": this.apiKey
+        },
+        body: JSON.stringify(body)
+      }
+    );
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`Gemini request failed with ${response.status}: ${detail}`);
+    }
+
+    const payload = (await response.json()) as GeminiResponsePayload;
+    const text = extractGeminiText(payload);
+    const citations = extractGeminiCitations(payload);
+
+    return {
+      message: {
+        role: "assistant",
+        content: text || "I could not produce a response."
+      },
+      citations,
+      contextFiles: contextDocuments.map((document) => document.name),
+      model: this.model,
+      provider: this.name,
+      searchStatus: request.useWebSearch && this.enableGoogleSearch ? "enabled" : request.useWebSearch ? "not_configured" : "disabled"
     };
   }
 }
@@ -101,6 +142,24 @@ type OpenAiResponsePayload = {
         url?: string;
       }>;
     }>;
+  }>;
+};
+
+type GeminiResponsePayload = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+    groundingMetadata?: {
+      groundingChunks?: Array<{
+        web?: {
+          uri?: string;
+          title?: string;
+        };
+      }>;
+    };
   }>;
 };
 
@@ -127,6 +186,28 @@ function extractCitations(payload: OpenAiResponsePayload) {
       .map((annotation) => ({
         title: annotation.title ?? annotation.url ?? "Source",
         url: annotation.url ?? ""
+      })) ?? []
+  );
+}
+
+function extractGeminiText(payload: GeminiResponsePayload): string {
+  return (
+    payload.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text)
+      .filter((text): text is string => Boolean(text))
+      .join("\n") ?? ""
+  );
+}
+
+function extractGeminiCitations(payload: GeminiResponsePayload) {
+  return (
+    payload.candidates
+      ?.flatMap((candidate) => candidate.groundingMetadata?.groundingChunks ?? [])
+      .map((chunk) => chunk.web)
+      .filter((web): web is { uri: string; title?: string } => Boolean(web?.uri))
+      .map((web) => ({
+        title: web.title ?? web.uri,
+        url: web.uri
       })) ?? []
   );
 }

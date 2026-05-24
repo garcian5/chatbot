@@ -11,6 +11,7 @@ export async function registerChatRoutes(
 ) {
   app.get("/api/health", async () => ({
     ok: true,
+    model: chatProvider.model,
     provider: chatProvider.name
   }));
 
