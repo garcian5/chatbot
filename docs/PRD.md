@@ -10,7 +10,7 @@ The user also wants the project to be approachable to develop. The selected stac
 
 Build a local-first chatbot MVP with a Vue 3 + Vite + TypeScript frontend and a Fastify + TypeScript backend.
 
-The backend reads supported files from a local `context` folder and injects those facts into the chat provider request. The frontend provides a chat interface, editable personality instructions, a web search toggle, browser voice selection, browser speech synthesis, and browser speech recognition when supported. The backend exposes provider abstractions so the MVP can run with a development provider by default and use an OpenAI-compatible provider when configured.
+The backend reads supported files from a local `context` folder and injects those facts into the chat provider request. The frontend provides a chat interface, editable personality instructions, a web search toggle, browser voice selection, browser speech synthesis, browser speech recognition when supported, and a visible active AI provider/model indicator. The backend uses Gemini by default, keeps an OpenAI-compatible provider as an explicitly selected option, and fails clearly at startup when the selected provider's API key is missing.
 
 The MVP avoids a database and authentication. Personalities and voice preferences are stored in browser local storage for now. Future persistence should use Prisma with SQLite for local development and PostgreSQL for multi-user production. Future authentication should use cookie/session-based browser auth with HTTP-only cookies.
 
@@ -31,26 +31,27 @@ The MVP avoids a database and authentication. Personalities and voice preference
 13. As a local chatbot user, I want a default helpful personality, so that the app works immediately on first launch.
 14. As a local chatbot user, I want to toggle whether web search is requested, so that I can decide when external information is allowed.
 15. As a local chatbot user, I want the app to show whether search is disabled, enabled, or not configured, so that search behavior is transparent.
-16. As a local chatbot user, I want the app to support a development provider when no AI key is configured, so that I can verify the local app without paying for API calls.
-17. As a local chatbot user, I want the app to support an OpenAI-compatible provider when configured, so that the chatbot can produce real AI responses.
-18. As a local chatbot user, I want future search providers to be pluggable, so that I am not locked into one search API.
-19. As a local chatbot user, I want assistant replies to include citations when the provider returns them, so that I can inspect web-backed answers.
-20. As a local chatbot user, I want to choose a browser voice, so that spoken replies sound closer to my preference.
-21. As a local chatbot user, I want the assistant to speak replies aloud, so that I can use the chatbot hands-free or more conversationally.
-22. As a local chatbot user, I want to turn spoken replies off, so that I can use the app silently.
-23. As a local chatbot user, I want to dictate a message using browser speech recognition when supported, so that I can talk to the assistant.
-24. As a local chatbot user, I want speech controls to be disabled when unsupported, so that the UI does not promise unavailable browser features.
-25. As a local chatbot user, I want to reset the conversation, so that I can start a fresh thread without changing app settings.
-26. As a developer, I want the frontend and backend to be TypeScript, so that contracts are easier to reason about.
-27. As a developer, I want a Fastify backend, so that the API remains lightweight while still supporting typed routes and plugin-based growth.
-28. As a developer, I want provider interfaces for chat and search, so that vendor-specific behavior does not leak through the UI.
-29. As a developer, I want context loading isolated behind a simple module, so that file ingestion can be tested and later replaced with indexing or database-backed retrieval.
-30. As a developer, I want the MVP to avoid a database, so that the first version focuses on the chatbot loop rather than persistence setup.
-31. As a developer, I want the future database direction documented, so that later work can add persistence without revisiting the same stack debate.
-32. As a developer, I want the future auth direction documented, so that account work has a sensible starting architecture.
-33. As a developer on Windows PowerShell, I want documented `npm.cmd` commands, so that running the app avoids PowerShell's `npm.ps1` shim.
-34. As a developer using VS Code, I want a launch configuration, so that I can start the frontend and backend together.
-35. As a developer, I want basic automated tests around context loading and config resolution, so that local context behavior does not regress.
+16. As a local chatbot user, I want the app to clearly report missing AI configuration, so that I do not mistake a development echo response for a real AI answer.
+17. As a local chatbot user, I want the app to use Gemini by default while keeping OpenAI available as an explicit option, so that the chatbot can produce real AI responses with the provider I have quota for.
+18. As a local chatbot user, I want the settings panel to show which AI provider and model are active, so that I can confirm which service will answer my prompts.
+19. As a local chatbot user, I want future search providers to be pluggable, so that I am not locked into one search API.
+20. As a local chatbot user, I want assistant replies to include citations when the provider returns them, so that I can inspect web-backed answers.
+21. As a local chatbot user, I want to choose a browser voice, so that spoken replies sound closer to my preference.
+22. As a local chatbot user, I want the assistant to speak replies aloud, so that I can use the chatbot hands-free or more conversationally.
+23. As a local chatbot user, I want to turn spoken replies off, so that I can use the app silently.
+24. As a local chatbot user, I want to dictate a message using browser speech recognition when supported, so that I can talk to the assistant.
+25. As a local chatbot user, I want speech controls to be disabled when unsupported, so that the UI does not promise unavailable browser features.
+26. As a local chatbot user, I want to reset the conversation, so that I can start a fresh thread without changing app settings.
+27. As a developer, I want the frontend and backend to be TypeScript, so that contracts are easier to reason about.
+28. As a developer, I want a Fastify backend, so that the API remains lightweight while still supporting typed routes and plugin-based growth.
+29. As a developer, I want provider interfaces for chat and search, so that vendor-specific behavior does not leak through the UI.
+30. As a developer, I want context loading isolated behind a simple module, so that file ingestion can be tested and later replaced with indexing or database-backed retrieval.
+31. As a developer, I want the MVP to avoid a database, so that the first version focuses on the chatbot loop rather than persistence setup.
+32. As a developer, I want the future database direction documented, so that later work can add persistence without revisiting the same stack debate.
+33. As a developer, I want the future auth direction documented, so that account work has a sensible starting architecture.
+34. As a developer on Windows PowerShell, I want documented `npm.cmd` commands, so that running the app avoids PowerShell's `npm.ps1` shim.
+35. As a developer using VS Code, I want a launch configuration, so that I can start the frontend and backend together.
+36. As a developer, I want basic automated tests around context loading and config resolution, so that local context behavior does not regress.
 
 ## Implementation Decisions
 
@@ -65,12 +66,12 @@ The MVP avoids a database and authentication. Personalities and voice preference
 - Support Markdown, plain text, and JSON context files for the MVP.
 - Enforce size limits while reading context files to avoid accidentally loading oversized local files.
 - Keep context ingestion as derive-on-read for MVP because local context is expected to be small and file-based.
-- Add a `ChatProvider` abstraction with a development provider and an OpenAI-compatible provider.
+- Add a `ChatProvider` abstraction with Gemini and OpenAI-compatible providers.
 - Add a `SearchProvider` abstraction even though the MVP search behavior is provider-gated and minimal.
-- Use a development chat provider when no AI API key is configured.
-- Use an OpenAI-compatible Responses API provider when an API key is configured.
+- Use Gemini by default with `AI_PROVIDER=gemini`.
+- Use an OpenAI-compatible Responses API provider only when `AI_PROVIDER=openai`.
 - Keep web search behind configuration and request metadata so future providers can be added without reshaping the UI.
-- Use environment variables for server port, host, client origin, context directory, OpenAI API key, OpenAI model, and search provider.
+- Use environment variables for server port, host, client origin, context directory, AI provider, Gemini API key, Gemini model, OpenAI API key, OpenAI model, and search provider.
 - Do not add authentication in the MVP.
 - Do not add database persistence in the MVP.
 - Recommend Prisma for future persistence.
@@ -119,7 +120,7 @@ The MVP avoids a database and authentication. Personalities and voice preference
 ## Further Notes
 
 - The MVP is intentionally local-first and single-user.
-- The first development experience should work even without an AI provider key through the development provider.
+- The first development experience should make missing AI provider configuration obvious instead of returning canned chatbot responses.
 - Web search should remain explicit and user-controlled.
 - The provider adapter design is important because the user is still evaluating long-term AI and search providers.
 - The database and auth decisions are documented as future direction, not immediate requirements.

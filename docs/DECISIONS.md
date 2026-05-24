@@ -70,8 +70,9 @@ Use provider adapters rather than hardwiring a single model vendor through the U
 
 MVP behavior:
 
-- Use a development echo provider when no AI API key is configured.
-- Use an OpenAI-compatible Responses API provider when `OPENAI_API_KEY` is configured.
+- Use Gemini for chat completions by default with `AI_PROVIDER=gemini`.
+- Keep an OpenAI-compatible Responses API provider available only when `AI_PROVIDER=openai`.
+- Require the selected real AI provider key for chatbot responses.
 
 Future options:
 

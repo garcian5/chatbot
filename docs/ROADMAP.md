@@ -9,7 +9,7 @@
 - Browser voice selection and speech synthesis.
 - Browser speech recognition when supported.
 - Optional web search toggle routed through a backend adapter.
-- Development fallback provider when no AI key is configured.
+- Gemini-backed chat provider with explicit OpenAI opt-in and a clear startup error when the selected provider key is missing.
 
 ## Next Candidates
 
