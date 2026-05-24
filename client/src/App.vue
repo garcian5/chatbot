@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { fetchContextFiles, sendChat, type ChatMessage, type Citation, type ContextFile } from "./api";
+import { fetchContextFiles, fetchProviderStatus, sendChat, type ChatMessage, type Citation, type ContextFile } from "./api";
 import { defaultSettings, loadSettings, saveSettings } from "./storage";
 
 type UiMessage = ChatMessage & {
@@ -23,6 +23,7 @@ const isSending = ref(false);
 const isListening = ref(false);
 const errorMessage = ref("");
 const providerLabel = ref("unknown");
+const modelLabel = ref("unknown");
 const searchStatus = ref<"disabled" | "not_configured" | "enabled">("disabled");
 
 const speechRecognitionSupported = computed(() => Boolean(window.SpeechRecognition || window.webkitSpeechRecognition));
@@ -38,6 +39,9 @@ watch(
 
 onMounted(async () => {
   contextFiles.value = await fetchContextFiles();
+  const providerStatus = await fetchProviderStatus();
+  providerLabel.value = providerStatus.provider;
+  modelLabel.value = providerStatus.model;
   loadVoices();
 
   if (speechSynthesisSupported.value) {
@@ -69,7 +73,6 @@ async function submitMessage() {
       personality: settings.value.personality,
       useWebSearch: settings.value.useWebSearch
     });
-
     const assistantMessage: UiMessage = {
       id: crypto.randomUUID(),
       ...response.message,
@@ -78,6 +81,7 @@ async function submitMessage() {
 
     messages.value.push(assistantMessage);
     providerLabel.value = response.provider;
+    modelLabel.value = response.model;
     searchStatus.value = response.searchStatus;
     contextFiles.value = response.contextFiles.map((name) => ({ name, characters: 0 }));
 
@@ -170,7 +174,7 @@ function startListening() {
       <header class="top-bar">
         <div>
           <h1>Local Context Chatbot</h1>
-          <p>{{ contextFiles.length }} context file{{ contextFiles.length === 1 ? "" : "s" }} loaded | {{ providerLabel }}</p>
+          <p>{{ contextFiles.length }} context file{{ contextFiles.length === 1 ? "" : "s" }} loaded | {{ providerLabel }} | {{ modelLabel }}</p>
         </div>
         <button class="icon-button" type="button" title="Reset conversation" aria-label="Reset conversation" @click="resetConversation">
           Reset
@@ -212,6 +216,12 @@ function startListening() {
     </section>
 
     <aside class="settings-panel" aria-label="Chat settings">
+      <section>
+        <h2>AI Model</h2>
+        <p class="status">Provider: {{ providerLabel }}</p>
+        <p class="status">Model: {{ modelLabel }}</p>
+      </section>
+
       <section>
         <div class="section-heading">
           <h2>Personality</h2>
