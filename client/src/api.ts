@@ -12,8 +12,14 @@ export type ChatResponse = {
   message: ChatMessage;
   citations: Citation[];
   contextFiles: string[];
+  model: string;
   provider: string;
   searchStatus: "disabled" | "not_configured" | "enabled";
+};
+
+export type ProviderStatus = {
+  model: string;
+  provider: string;
 };
 
 export type ContextFile = {
@@ -40,6 +46,17 @@ export async function sendChat(payload: {
   }
 
   return response.json() as Promise<ChatResponse>;
+}
+
+export async function fetchProviderStatus(): Promise<ProviderStatus> {
+  const response = await fetch("/api/health");
+
+  if (!response.ok) {
+    return { model: "unknown", provider: "unknown" };
+  }
+
+  const payload = (await response.json()) as ProviderStatus;
+  return payload;
 }
 
 export async function fetchContextFiles(): Promise<ContextFile[]> {
