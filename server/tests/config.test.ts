@@ -50,6 +50,93 @@ test("falls back to the parent project folder for workspace-launched server scri
   }
 });
 
+test("loads provider settings from a root env file for workspace-launched server scripts", async () => {
+  const previousInitCwd = process.env.INIT_CWD;
+  const previousAiProvider = process.env.AI_PROVIDER;
+  const previousApiKey = process.env.OPENAI_API_KEY;
+  const previousModel = process.env.OPENAI_MODEL;
+  const previousGeminiApiKey = process.env.GEMINI_API_KEY;
+  const previousGeminiModel = process.env.GEMINI_MODEL;
+  const previousSearchProvider = process.env.SEARCH_PROVIDER;
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "chatbot-env-"));
+  const serverDir = path.join(root, "server");
+  const originalCwd = process.cwd();
+
+  await fs.mkdir(serverDir);
+  await fs.writeFile(
+    path.join(root, ".env"),
+    [
+      "GEMINI_API_KEY=gemini-from-env-file",
+      "GEMINI_MODEL=gemini-test-model",
+      "AI_PROVIDER=gemini",
+      "OPENAI_API_KEY=from-env-file",
+      "OPENAI_MODEL=test-model",
+      "SEARCH_PROVIDER=gemini"
+    ].join("\n")
+  );
+
+  process.env.INIT_CWD = root;
+  delete process.env.AI_PROVIDER;
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_MODEL;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_MODEL;
+  delete process.env.SEARCH_PROVIDER;
+  process.chdir(serverDir);
+
+  try {
+    const config = loadConfig();
+    assert.equal(config.aiProvider, "gemini");
+    assert.equal(config.geminiApiKey, "gemini-from-env-file");
+    assert.equal(config.geminiModel, "gemini-test-model");
+    assert.equal(config.openAiApiKey, "from-env-file");
+    assert.equal(config.openAiModel, "test-model");
+    assert.equal(config.searchProvider, "gemini");
+  } finally {
+    process.chdir(originalCwd);
+    restoreEnv("INIT_CWD", previousInitCwd);
+    restoreEnv("AI_PROVIDER", previousAiProvider);
+    restoreEnv("GEMINI_API_KEY", previousGeminiApiKey);
+    restoreEnv("GEMINI_MODEL", previousGeminiModel);
+    restoreEnv("OPENAI_API_KEY", previousApiKey);
+    restoreEnv("OPENAI_MODEL", previousModel);
+    restoreEnv("SEARCH_PROVIDER", previousSearchProvider);
+  }
+});
+
+test("defaults to Gemini provider unless OpenAI is explicitly selected", () => {
+  const previousAiProvider = process.env.AI_PROVIDER;
+
+  delete process.env.AI_PROVIDER;
+  try {
+    assert.equal(loadConfig().aiProvider, "gemini");
+
+    process.env.AI_PROVIDER = "openai";
+    assert.equal(loadConfig().aiProvider, "openai");
+  } finally {
+    restoreEnv("AI_PROVIDER", previousAiProvider);
+  }
+});
+
+test("keeps explicit environment variables ahead of env file values", async () => {
+  const previousInitCwd = process.env.INIT_CWD;
+  const previousApiKey = process.env.OPENAI_API_KEY;
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "chatbot-env-"));
+
+  await fs.writeFile(path.join(root, ".env"), "OPENAI_API_KEY=from-env-file");
+
+  process.env.INIT_CWD = root;
+  process.env.OPENAI_API_KEY = "from-process-env";
+
+  try {
+    const config = loadConfig();
+    assert.equal(config.openAiApiKey, "from-process-env");
+  } finally {
+    restoreEnv("INIT_CWD", previousInitCwd);
+    restoreEnv("OPENAI_API_KEY", previousApiKey);
+  }
+});
+
 function restoreEnv(key: string, value: string | undefined) {
   if (value === undefined) {
     delete process.env[key];
