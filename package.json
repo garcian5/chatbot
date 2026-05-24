@@ -1,0 +1,17 @@
+{
+  "name": "local-context-chatbot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev:client": "npm --workspace client run dev",
+    "dev:server": "npm --workspace server run dev",
+    "build": "npm --workspace client run build && npm --workspace server run build",
+    "typecheck": "npm --workspace client run typecheck && npm --workspace server run typecheck",
+    "test": "npm --workspace server run test"
+  }
+}
