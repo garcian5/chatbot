@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { GeminiGenerateContentProvider, OpenAiResponsesProvider } from "../src/providers/chatProvider.js";
+import { GeminiGenerateContentProvider, GroqChatCompletionsProvider, OpenAiResponsesProvider } from "../src/providers/chatProvider.js";
 
 test("OpenAI provider sends personality, context, and conversation to the Responses API", async () => {
   const previousFetch = globalThis.fetch;
@@ -189,6 +189,49 @@ test("Gemini provider includes Google Search and extracts grounding citations", 
   }
 });
 
+test("Groq provider sends instructions and conversation to chat completions", async () => {
+  const previousFetch = globalThis.fetch;
+  let capturedRequest: { url: string; body: GroqRequestBody } | undefined;
+
+  globalThis.fetch = async (url, init) => {
+    capturedRequest = {
+      url: String(url),
+      body: JSON.parse(String(init?.body)) as GroqRequestBody
+    };
+
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "A genuine Groq answer." } }]
+      }),
+      { status: 200 }
+    );
+  };
+
+  try {
+    const provider = new GroqChatCompletionsProvider("test-key", "llama-test-model");
+    const response = await provider.complete(
+      {
+        personality: "Answer like a patient tutor.",
+        useWebSearch: false,
+        messages: [{ role: "user", content: "Explain the local fact." }]
+      },
+      [{ name: "facts.md", content: "The local fact is that Ada likes TypeScript." }]
+    );
+
+    assert.equal(response.message.content, "A genuine Groq answer.");
+    assert.equal(response.provider, "groq");
+    assert.equal(capturedRequest?.url, "https://api.groq.com/openai/v1/chat/completions");
+    assert.equal(capturedRequest?.body.model, "llama-test-model");
+    assert.match(capturedRequest?.body.messages[0]?.content ?? "", /Answer like a patient tutor/);
+    assert.match(capturedRequest?.body.messages[0]?.content ?? "", /facts\.md/);
+    assert.deepEqual(capturedRequest?.body.messages.slice(1), [
+      { role: "user", content: "Explain the local fact." }
+    ]);
+  } finally {
+    globalThis.fetch = previousFetch;
+  }
+});
+
 type OpenAiRequestBody = {
   model: string;
   instructions: string;
@@ -215,5 +258,13 @@ type GeminiRequestBody = {
   }>;
   tools?: Array<{
     google_search: Record<string, never>;
+  }>;
+};
+
+type GroqRequestBody = {
+  model: string;
+  messages: Array<{
+    role: string;
+    content: string;
   }>;
 };
