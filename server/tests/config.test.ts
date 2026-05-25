@@ -57,6 +57,8 @@ test("loads provider settings from a root env file for workspace-launched server
   const previousModel = process.env.OPENAI_MODEL;
   const previousGeminiApiKey = process.env.GEMINI_API_KEY;
   const previousGeminiModel = process.env.GEMINI_MODEL;
+  const previousGroqApiKey = process.env.GROQ_API_KEY;
+  const previousGroqModel = process.env.GROQ_MODEL;
   const previousSearchProvider = process.env.SEARCH_PROVIDER;
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "chatbot-env-"));
   const serverDir = path.join(root, "server");
@@ -69,6 +71,8 @@ test("loads provider settings from a root env file for workspace-launched server
       "GEMINI_API_KEY=gemini-from-env-file",
       "GEMINI_MODEL=gemini-test-model",
       "AI_PROVIDER=gemini",
+      "GROQ_API_KEY=groq-from-env-file",
+      "GROQ_MODEL=groq-test-model",
       "OPENAI_API_KEY=from-env-file",
       "OPENAI_MODEL=test-model",
       "SEARCH_PROVIDER=gemini"
@@ -79,6 +83,8 @@ test("loads provider settings from a root env file for workspace-launched server
   delete process.env.AI_PROVIDER;
   delete process.env.GEMINI_API_KEY;
   delete process.env.GEMINI_MODEL;
+  delete process.env.GROQ_API_KEY;
+  delete process.env.GROQ_MODEL;
   delete process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_MODEL;
   delete process.env.SEARCH_PROVIDER;
@@ -89,6 +95,8 @@ test("loads provider settings from a root env file for workspace-launched server
     assert.equal(config.aiProvider, "gemini");
     assert.equal(config.geminiApiKey, "gemini-from-env-file");
     assert.equal(config.geminiModel, "gemini-test-model");
+    assert.equal(config.groqApiKey, "groq-from-env-file");
+    assert.equal(config.groqModel, "groq-test-model");
     assert.equal(config.openAiApiKey, "from-env-file");
     assert.equal(config.openAiModel, "test-model");
     assert.equal(config.searchProvider, "gemini");
@@ -98,13 +106,15 @@ test("loads provider settings from a root env file for workspace-launched server
     restoreEnv("AI_PROVIDER", previousAiProvider);
     restoreEnv("GEMINI_API_KEY", previousGeminiApiKey);
     restoreEnv("GEMINI_MODEL", previousGeminiModel);
+    restoreEnv("GROQ_API_KEY", previousGroqApiKey);
+    restoreEnv("GROQ_MODEL", previousGroqModel);
     restoreEnv("OPENAI_API_KEY", previousApiKey);
     restoreEnv("OPENAI_MODEL", previousModel);
     restoreEnv("SEARCH_PROVIDER", previousSearchProvider);
   }
 });
 
-test("defaults to Gemini provider unless OpenAI is explicitly selected", () => {
+test("defaults to Gemini provider unless OpenAI or Groq is explicitly selected", () => {
   const previousAiProvider = process.env.AI_PROVIDER;
 
   delete process.env.AI_PROVIDER;
@@ -113,6 +123,9 @@ test("defaults to Gemini provider unless OpenAI is explicitly selected", () => {
 
     process.env.AI_PROVIDER = "openai";
     assert.equal(loadConfig().aiProvider, "openai");
+
+    process.env.AI_PROVIDER = "groq";
+    assert.equal(loadConfig().aiProvider, "groq");
   } finally {
     restoreEnv("AI_PROVIDER", previousAiProvider);
   }
