@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export type AppConfig = {
-  aiProvider: "gemini" | "openai";
+  aiProvider: "gemini" | "openai" | "groq";
   host: string;
   port: number;
   clientOrigin: string;
@@ -11,6 +11,8 @@ export type AppConfig = {
   geminiModel: string;
   openAiApiKey?: string;
   openAiModel: string;
+  groqApiKey?: string;
+  groqModel: string;
   searchProvider: "none" | "openai" | "gemini";
 };
 
@@ -18,7 +20,7 @@ export function loadConfig(): AppConfig {
   loadEnvFile();
 
   const port = Number.parseInt(process.env.PORT ?? "5174", 10);
-  const aiProvider = process.env.AI_PROVIDER === "openai" ? "openai" : "gemini";
+  const aiProvider = resolveAiProvider(process.env.AI_PROVIDER);
 
   return {
     aiProvider,
@@ -30,8 +32,18 @@ export function loadConfig(): AppConfig {
     geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
     openAiApiKey: process.env.OPENAI_API_KEY || undefined,
     openAiModel: process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
+    groqApiKey: process.env.GROQ_API_KEY || undefined,
+    groqModel: process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile",
     searchProvider: process.env.SEARCH_PROVIDER === "openai" || process.env.SEARCH_PROVIDER === "gemini" ? process.env.SEARCH_PROVIDER : "none"
   };
+}
+
+function resolveAiProvider(value?: string): AppConfig["aiProvider"] {
+  if (value === "openai" || value === "groq") {
+    return value;
+  }
+
+  return "gemini";
 }
 
 function loadEnvFile() {

@@ -5,7 +5,12 @@ const config = loadConfig();
 try {
   const app = await buildApp(config);
   await app.listen({ host: config.host, port: config.port });
-  const model = config.aiProvider === "gemini" ? config.geminiModel : config.openAiModel;
+  const model =
+    config.aiProvider === "gemini"
+      ? config.geminiModel
+      : config.aiProvider === "groq"
+        ? config.groqModel
+        : config.openAiModel;
   app.log.info(
     { contextDir: config.contextDir, host: config.host, model, port: config.port, provider: config.aiProvider },
     "Server started"

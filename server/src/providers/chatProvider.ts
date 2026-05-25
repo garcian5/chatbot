@@ -1,11 +1,21 @@
-import type { ChatRequest, ChatResponse, ContextDocument } from "../types.js";
+import type { AiProviderId, ChatRequest, ChatResponse, ContextDocument } from "../types.js";
 import { buildContextBlock } from "../services/contextSource.js";
 
 export type ChatProvider = {
-  name: string;
+  name: AiProviderId;
   model: string;
   complete(request: ChatRequest, contextDocuments: ContextDocument[]): Promise<ChatResponse>;
 };
+
+export class ChatProviderRequestError extends Error {
+  constructor(
+    readonly provider: AiProviderId,
+    readonly status: number,
+    readonly detail: string
+  ) {
+    super(`${provider} request failed with ${status}: ${detail}`);
+  }
+}
 
 function buildChatInstructions(request: ChatRequest, contextDocuments: ContextDocument[]): string {
   return [
@@ -51,7 +61,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
     });
     if (!response.ok) {
       const detail = await response.text();
-      throw new Error(`OpenAI request failed with ${response.status}: ${detail}`);
+      throw new ChatProviderRequestError(this.name, response.status, detail);
     }
 
     const payload = (await response.json()) as OpenAiResponsePayload;
@@ -67,6 +77,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
       contextFiles: contextDocuments.map((document) => document.name),
       model: this.model,
       provider: this.name,
+      exhaustedProviders: [],
       searchStatus: request.useWebSearch && this.enableHostedWebSearch ? "enabled" : request.useWebSearch ? "not_configured" : "disabled"
     };
   }
@@ -110,7 +121,7 @@ export class GeminiGenerateContentProvider implements ChatProvider {
 
     if (!response.ok) {
       const detail = await response.text();
-      throw new Error(`Gemini request failed with ${response.status}: ${detail}`);
+      throw new ChatProviderRequestError(this.name, response.status, detail);
     }
 
     const payload = (await response.json()) as GeminiResponsePayload;
@@ -126,7 +137,61 @@ export class GeminiGenerateContentProvider implements ChatProvider {
       contextFiles: contextDocuments.map((document) => document.name),
       model: this.model,
       provider: this.name,
+      exhaustedProviders: [],
       searchStatus: request.useWebSearch && this.enableGoogleSearch ? "enabled" : request.useWebSearch ? "not_configured" : "disabled"
+    };
+  }
+}
+
+export class GroqChatCompletionsProvider implements ChatProvider {
+  readonly name = "groq";
+
+  constructor(
+    private readonly apiKey: string,
+    readonly model: string
+  ) {}
+
+  async complete(request: ChatRequest, contextDocuments: ContextDocument[]): Promise<ChatResponse> {
+    const instructions = buildChatInstructions(request, contextDocuments);
+    const body = {
+      model: this.model,
+      messages: [
+        { role: "system", content: instructions },
+        ...request.messages.map((message) => ({
+          role: message.role,
+          content: message.content
+        }))
+      ]
+    };
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new ChatProviderRequestError(this.name, response.status, detail);
+    }
+
+    const payload = (await response.json()) as GroqChatCompletionsPayload;
+    const text = payload.choices?.[0]?.message?.content ?? "";
+
+    return {
+      message: {
+        role: "assistant",
+        content: text || "I could not produce a response."
+      },
+      citations: [],
+      contextFiles: contextDocuments.map((document) => document.name),
+      model: this.model,
+      provider: this.name,
+      exhaustedProviders: [],
+      searchStatus: request.useWebSearch ? "not_configured" : "disabled"
     };
   }
 }
@@ -159,6 +224,14 @@ type GeminiResponsePayload = {
           title?: string;
         };
       }>;
+    };
+  }>;
+};
+
+type GroqChatCompletionsPayload = {
+  choices?: Array<{
+    message?: {
+      content?: string;
     };
   }>;
 };
