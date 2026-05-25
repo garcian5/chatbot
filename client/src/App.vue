@@ -1,12 +1,55 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { fetchContextFiles, fetchProviderStatus, sendChat, type ChatMessage, type Citation, type ContextFile } from "./api";
+import {
+  fetchContextFiles,
+  fetchProviderStatus,
+  sendChat,
+  type AiProviderId,
+  ChatApiError,
+  type ChatMessage,
+  type Citation,
+  type ContextFile,
+  type ProviderOption
+} from "./api";
 import { defaultSettings, loadSettings, saveSettings } from "./storage";
 
 type UiMessage = ChatMessage & {
   id: string;
   citations?: Citation[];
 };
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+type BrowserSpeechRecognitionWindow = Window &
+  typeof globalThis & {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  };
+
+interface BrowserSpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  onsoundstart: (() => void) | null;
+  onsoundend: (() => void) | null;
+  onspeechstart: (() => void) | null;
+  onspeechend: (() => void) | null;
+}
+
+interface BrowserSpeechRecognitionEvent {
+  results: SpeechRecognitionResultList;
+}
+
+interface BrowserSpeechRecognitionErrorEvent {
+  error: string;
+}
+
+const speechRecognitionWindow = window as BrowserSpeechRecognitionWindow;
 
 const settings = ref(loadSettings());
 const messages = ref<UiMessage[]>([
@@ -22,15 +65,24 @@ const voices = ref<SpeechSynthesisVoice[]>([]);
 const isSending = ref(false);
 const isListening = ref(false);
 const errorMessage = ref("");
-const providerLabel = ref("unknown");
+const providerLabel = ref<AiProviderId | "none" | "unknown">("unknown");
 const modelLabel = ref("unknown");
+const providerOptions = ref<ProviderOption[]>([]);
 const searchStatus = ref<"disabled" | "not_configured" | "enabled">("disabled");
 
-const speechRecognitionSupported = computed(() => Boolean(window.SpeechRecognition || window.webkitSpeechRecognition));
+const speechRecognitionSupported = computed(() =>
+  Boolean(speechRecognitionWindow.SpeechRecognition || speechRecognitionWindow.webkitSpeechRecognition)
+);
 const speechSynthesisSupported = computed(() => "speechSynthesis" in window);
+const primaryProvider = computed({
+  get: () => settings.value.providerOrder[0] ?? "gemini",
+  set: (provider: AiProviderId) => {
+    settings.value.providerOrder = [provider, ...settings.value.providerOrder.filter((id) => id !== provider)];
+  }
+});
 const SPEECH_SILENCE_TIMEOUT_MS = 1500;
 
-let activeRecognition: SpeechRecognition | null = null;
+let activeRecognition: BrowserSpeechRecognition | null = null;
 let silenceTimer: number | undefined;
 let stopRequested = false;
 
@@ -47,6 +99,7 @@ onMounted(async () => {
   const providerStatus = await fetchProviderStatus();
   providerLabel.value = providerStatus.provider;
   modelLabel.value = providerStatus.model;
+  providerOptions.value = providerStatus.providers;
   loadVoices();
 
   if (speechSynthesisSupported.value) {
@@ -83,7 +136,9 @@ async function submitMessage() {
     const response = await sendChat({
       messages: messages.value.map(({ role, content }) => ({ role, content })),
       personality: settings.value.personality,
-      useWebSearch: settings.value.useWebSearch
+      useWebSearch: settings.value.useWebSearch,
+      providerOrder: settings.value.providerOrder,
+      disabledProviders: settings.value.disabledProviders
     });
     const assistantMessage: UiMessage = {
       id: crypto.randomUUID(),
@@ -96,11 +151,16 @@ async function submitMessage() {
     modelLabel.value = response.model;
     searchStatus.value = response.searchStatus;
     contextFiles.value = response.contextFiles.map((name) => ({ name, characters: 0 }));
+    disableExhaustedProviders(response.exhaustedProviders);
 
     if (settings.value.speakResponses) {
       speak(assistantMessage.content);
     }
   } catch (error) {
+    if (error instanceof ChatApiError) {
+      disableExhaustedProviders(error.exhaustedProviders);
+    }
+
     errorMessage.value = error instanceof Error ? error.message : "The chat request failed.";
   } finally {
     isSending.value = false;
@@ -120,6 +180,31 @@ function resetConversation() {
 
 function resetPersonality() {
   settings.value.personality = defaultSettings.personality;
+}
+
+function isProviderDisabled(provider: AiProviderId) {
+  return settings.value.disabledProviders.includes(provider);
+}
+
+function setProviderDisabled(provider: AiProviderId, disabled: boolean) {
+  if (disabled) {
+    settings.value.disabledProviders = Array.from(new Set([...settings.value.disabledProviders, provider]));
+    return;
+  }
+
+  settings.value.disabledProviders = settings.value.disabledProviders.filter((id) => id !== provider);
+}
+
+function toggleProvider(provider: AiProviderId, event: Event) {
+  setProviderDisabled(provider, !(event.target as HTMLInputElement).checked);
+}
+
+function disableExhaustedProviders(providers: AiProviderId[]) {
+  if (providers.length === 0) {
+    return;
+  }
+
+  settings.value.disabledProviders = Array.from(new Set([...settings.value.disabledProviders, ...providers]));
 }
 
 function loadVoices() {
@@ -149,7 +234,7 @@ function speak(text: string) {
 }
 
 function startListening() {
-  const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+  const Recognition = speechRecognitionWindow.SpeechRecognition ?? speechRecognitionWindow.webkitSpeechRecognition;
   if (!Recognition || isListening.value) {
     return;
   }
@@ -240,7 +325,7 @@ function startListening() {
   }
 }
 
-function scheduleSilenceStop(recognition: SpeechRecognition) {
+function scheduleSilenceStop(recognition: BrowserSpeechRecognition) {
   clearSilenceTimer();
   silenceTimer = window.setTimeout(() => {
     if (activeRecognition !== recognition) {
@@ -252,7 +337,7 @@ function scheduleSilenceStop(recognition: SpeechRecognition) {
   }, SPEECH_SILENCE_TIMEOUT_MS);
 }
 
-function hasFinalSpeechResult(event: SpeechRecognitionEvent): boolean {
+function hasFinalSpeechResult(event: BrowserSpeechRecognitionEvent): boolean {
   return Array.from(event.results).some((result) => result.isFinal);
 }
 
@@ -318,6 +403,25 @@ function clearSilenceTimer() {
         <h2>AI Model</h2>
         <p class="status">Provider: {{ providerLabel }}</p>
         <p class="status">Model: {{ modelLabel }}</p>
+        <label>
+          Try first
+          <select v-model="primaryProvider">
+            <option v-for="provider in providerOptions" :key="provider.id" :value="provider.id" :disabled="!provider.configured">
+              {{ provider.id }} | {{ provider.model }}{{ provider.configured ? "" : " | not configured" }}
+            </option>
+          </select>
+        </label>
+        <div class="provider-list" aria-label="Provider availability">
+          <label v-for="provider in providerOptions" :key="provider.id" class="toggle-row">
+            <input
+              type="checkbox"
+              :checked="!isProviderDisabled(provider.id)"
+              :disabled="!provider.configured"
+              @change="toggleProvider(provider.id, $event)"
+            />
+            {{ provider.id }} enabled
+          </label>
+        </div>
       </section>
 
       <section>
