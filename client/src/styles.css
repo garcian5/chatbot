@@ -238,6 +238,11 @@ label {
   accent-color: #1e6f64;
 }
 
+.provider-list {
+  display: grid;
+  gap: 8px;
+}
+
 .context-list {
   display: grid;
   gap: 6px;

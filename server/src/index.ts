@@ -2,11 +2,20 @@ import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 
 const config = loadConfig();
-const app = await buildApp(config);
-
 try {
+  const app = await buildApp(config);
   await app.listen({ host: config.host, port: config.port });
+  const model =
+    config.aiProvider === "gemini"
+      ? config.geminiModel
+      : config.aiProvider === "groq"
+        ? config.groqModel
+        : config.openAiModel;
+  app.log.info(
+    { contextDir: config.contextDir, host: config.host, model, port: config.port, provider: config.aiProvider },
+    "Server started"
+  );
 } catch (error) {
-  app.log.error(error);
+  console.error(error);
   process.exit(1);
 }

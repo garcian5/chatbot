@@ -28,7 +28,7 @@ The app reads facts from the `context/` folder, lets the user define a personali
    npm.cmd install
    ```
 
-2. Copy `.env.example` to `.env` and fill in optional provider settings.
+2. Copy `.env.example` to `.env` and set at least one provider key, such as `GEMINI_API_KEY` or `GROQ_API_KEY`. Keep `AI_PROVIDER=gemini` to prefer Gemini first, or set `AI_PROVIDER=groq` to prefer Groq first.
 
 3. Start the backend:
 
@@ -63,11 +63,13 @@ The MVP intentionally keeps context management file-based. A future version can 
 
 ## Provider Behavior
 
-If `OPENAI_API_KEY` is not set, the backend uses a development provider that echoes the latest user message and summarizes which context files were loaded.
+The backend supports Gemini, Groq, and OpenAI. Configure any combination of `GEMINI_API_KEY`, `GROQ_API_KEY`, and `OPENAI_API_KEY`; the server starts as long as at least one provider is configured. `AI_PROVIDER` sets the startup preference, and the UI can change the provider order for chat requests.
 
-If `OPENAI_API_KEY` is set, the backend calls OpenAI's Responses API using `OPENAI_MODEL`.
+Gemini calls Gemini's `generateContent` API using `GEMINI_MODEL`. Groq calls the OpenAI-compatible `https://api.groq.com/openai/v1/chat/completions` endpoint using `GROQ_MODEL`. OpenAI calls the Responses API using `OPENAI_MODEL`.
 
-Web search is adapter-based. The MVP supports a no-op search adapter and a provider flag for OpenAI-hosted search when the chat provider supports it.
+When a provider returns a quota or rate-limit style exhaustion error, the backend automatically tries the next enabled configured provider. The UI marks exhausted providers disabled in browser `localStorage`, so a daily quota limit stays disabled across refreshes until you re-enable it.
+
+Web search is adapter-based. Set `SEARCH_PROVIDER=gemini` to use Gemini Google Search grounding, `SEARCH_PROVIDER=openai` to use OpenAI-hosted search with the OpenAI provider, or `SEARCH_PROVIDER=none` to disable hosted search.
 
 ## Speech
 

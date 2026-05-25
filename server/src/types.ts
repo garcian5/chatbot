@@ -1,3 +1,5 @@
+export type AiProviderId = "gemini" | "openai" | "groq";
+
 export type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
@@ -7,6 +9,8 @@ export type ChatRequest = {
   messages: ChatMessage[];
   personality: string;
   useWebSearch: boolean;
+  providerOrder?: AiProviderId[];
+  disabledProviders?: AiProviderId[];
 };
 
 export type ContextDocument = {
@@ -23,7 +27,9 @@ export type ChatResponse = {
   message: ChatMessage;
   citations: Citation[];
   contextFiles: string[];
-  provider: string;
+  model: string;
+  provider: AiProviderId;
+  exhaustedProviders: AiProviderId[];
   searchStatus: "disabled" | "not_configured" | "enabled";
 };
 

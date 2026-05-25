@@ -1,8 +1,12 @@
+import type { AiProviderId } from "./api";
+
 export type SavedSettings = {
   personality: string;
   speakResponses: boolean;
   selectedVoiceName: string;
   useWebSearch: boolean;
+  providerOrder: AiProviderId[];
+  disabledProviders: AiProviderId[];
 };
 
 const SETTINGS_KEY = "local-context-chatbot:settings";
@@ -11,7 +15,9 @@ export const defaultSettings: SavedSettings = {
   personality: "Warm, curious, concise, and honest. Prefer facts from the local context folder.",
   speakResponses: true,
   selectedVoiceName: "",
-  useWebSearch: false
+  useWebSearch: false,
+  providerOrder: ["gemini", "groq", "openai"],
+  disabledProviders: []
 };
 
 export function loadSettings(): SavedSettings {
