@@ -71,8 +71,11 @@ Use provider adapters rather than hardwiring a single model vendor through the U
 MVP behavior:
 
 - Use Gemini for chat completions by default with `AI_PROVIDER=gemini`.
-- Keep an OpenAI-compatible Responses API provider available only when `AI_PROVIDER=openai`.
-- Require the selected real AI provider key for chatbot responses.
+- Support Groq as a configured fallback provider through its OpenAI-compatible chat completions endpoint.
+- Keep an OpenAI-compatible Responses API provider available when `OPENAI_API_KEY` is configured.
+- Require at least one real AI provider key for chatbot responses.
+- Let the browser persist provider order and disabled provider choices in local storage.
+- Automatically try the next enabled provider when a provider returns a quota or rate-limit exhaustion error.
 
 Future options:
 
