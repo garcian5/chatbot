@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { fetchContextFiles, fetchProviderStatus, sendChat, type ChatMessage, type Citation, type ContextFile } from "./api";
 import { defaultSettings, loadSettings, saveSettings } from "./storage";
 
@@ -28,6 +28,11 @@ const searchStatus = ref<"disabled" | "not_configured" | "enabled">("disabled");
 
 const speechRecognitionSupported = computed(() => Boolean(window.SpeechRecognition || window.webkitSpeechRecognition));
 const speechSynthesisSupported = computed(() => "speechSynthesis" in window);
+const SPEECH_SILENCE_TIMEOUT_MS = 1500;
+
+let activeRecognition: SpeechRecognition | null = null;
+let silenceTimer: number | undefined;
+let stopRequested = false;
 
 watch(
   settings,
@@ -47,6 +52,13 @@ onMounted(async () => {
   if (speechSynthesisSupported.value) {
     window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
   }
+});
+
+onBeforeUnmount(() => {
+  stopRequested = true;
+  clearSilenceTimer();
+  activeRecognition?.stop();
+  activeRecognition = null;
 });
 
 async function submitMessage() {
@@ -143,28 +155,114 @@ function startListening() {
   }
 
   const recognition = new Recognition();
-  recognition.continuous = false;
-  recognition.interimResults = false;
+  let baseDraft = draft.value.trim();
+  let currentRecognitionTranscript = "";
+
+  recognition.continuous = true;
+  recognition.interimResults = true;
   recognition.lang = "en-US";
+  activeRecognition = recognition;
+  stopRequested = false;
   isListening.value = true;
 
   recognition.onresult = (event) => {
-    const transcript = Array.from(event.results)
+    currentRecognitionTranscript = Array.from(event.results)
       .map((result) => result[0]?.transcript)
       .filter(Boolean)
       .join(" ");
-    draft.value = [draft.value, transcript].filter(Boolean).join(" ").trim();
+    draft.value = [baseDraft, currentRecognitionTranscript].filter(Boolean).join(" ").trim();
+
+    if (hasFinalSpeechResult(event)) {
+      scheduleSilenceStop(recognition);
+    } else {
+      clearSilenceTimer();
+    }
   };
 
   recognition.onerror = (event) => {
+    if (event.error === "no-speech") {
+      stopRequested = true;
+      return;
+    }
+
+    if (event.error === "aborted" && stopRequested) {
+      return;
+    }
+
+    stopRequested = true;
     errorMessage.value = `Speech recognition failed: ${event.error}`;
   };
 
+  recognition.onsoundstart = () => {
+    clearSilenceTimer();
+  };
+
+  recognition.onspeechstart = () => {
+    clearSilenceTimer();
+  };
+
+  recognition.onspeechend = () => {
+    scheduleSilenceStop(recognition);
+  };
+
+  recognition.onsoundend = () => {
+    scheduleSilenceStop(recognition);
+  };
+
   recognition.onend = () => {
+    if (activeRecognition !== recognition) {
+      return;
+    }
+
+    if (!stopRequested) {
+      try {
+        baseDraft = draft.value.trim();
+        currentRecognitionTranscript = "";
+        recognition.start();
+        return;
+      } catch (error) {
+        errorMessage.value = error instanceof Error ? error.message : "Speech recognition failed to restart.";
+      }
+    }
+
+    clearSilenceTimer();
+    activeRecognition = null;
     isListening.value = false;
   };
 
-  recognition.start();
+  try {
+    recognition.start();
+  } catch (error) {
+    clearSilenceTimer();
+    activeRecognition = null;
+    isListening.value = false;
+    errorMessage.value = error instanceof Error ? error.message : "Speech recognition failed to start.";
+  }
+}
+
+function scheduleSilenceStop(recognition: SpeechRecognition) {
+  clearSilenceTimer();
+  silenceTimer = window.setTimeout(() => {
+    if (activeRecognition !== recognition) {
+      return;
+    }
+
+    stopRequested = true;
+    recognition.stop();
+  }, SPEECH_SILENCE_TIMEOUT_MS);
+}
+
+function hasFinalSpeechResult(event: SpeechRecognitionEvent): boolean {
+  return Array.from(event.results).some((result) => result.isFinal);
+}
+
+function clearSilenceTimer() {
+  if (silenceTimer === undefined) {
+    return;
+  }
+
+  window.clearTimeout(silenceTimer);
+  silenceTimer = undefined;
 }
 </script>
 
