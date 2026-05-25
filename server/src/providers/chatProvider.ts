@@ -7,6 +7,18 @@ export type ChatProvider = {
   complete(request: ChatRequest, contextDocuments: ContextDocument[]): Promise<ChatResponse>;
 };
 
+function buildChatInstructions(request: ChatRequest, contextDocuments: ContextDocument[]): string {
+  return [
+    "You are a configurable local-first chatbot.",
+    "Local context files are authoritative when they are relevant.",
+    "Use the current conversation as temporary session memory for facts, preferences, and role assignments the user provides during this chat.",
+    "If current session memory conflicts with the local context files, follow the local context files and do not adopt the conflicting session memory.",
+    "If neither the local context files nor current session memory contain the answer, say so clearly.",
+    `Personality: ${request.personality.trim() || "helpful, direct, and warm"}`,
+    `Local context:\n${buildContextBlock(contextDocuments)}`
+  ].join("\n\n");
+}
+
 export class OpenAiResponsesProvider implements ChatProvider {
   readonly name = "openai";
 
@@ -17,13 +29,7 @@ export class OpenAiResponsesProvider implements ChatProvider {
   ) {}
 
   async complete(request: ChatRequest, contextDocuments: ContextDocument[]): Promise<ChatResponse> {
-    const instructions = [
-      "You are a configurable local-first chatbot.",
-      "Prefer the provided local context when it is relevant.",
-      "If the local context does not contain the answer, say so clearly.",
-      `Personality: ${request.personality.trim() || "helpful, direct, and warm"}`,
-      `Local context:\n${buildContextBlock(contextDocuments)}`
-    ].join("\n\n");
+    const instructions = buildChatInstructions(request, contextDocuments);
 
     const body = {
       model: this.model,
@@ -76,13 +82,7 @@ export class GeminiGenerateContentProvider implements ChatProvider {
   ) {}
 
   async complete(request: ChatRequest, contextDocuments: ContextDocument[]): Promise<ChatResponse> {
-    const instructions = [
-      "You are a configurable local-first chatbot.",
-      "Prefer the provided local context when it is relevant.",
-      "If the local context does not contain the answer, say so clearly.",
-      `Personality: ${request.personality.trim() || "helpful, direct, and warm"}`,
-      `Local context:\n${buildContextBlock(contextDocuments)}`
-    ].join("\n\n");
+    const instructions = buildChatInstructions(request, contextDocuments);
 
     const body = {
       systemInstruction: {

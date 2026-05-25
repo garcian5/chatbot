@@ -26,7 +26,11 @@ test("OpenAI provider sends personality, context, and conversation to the Respon
       {
         personality: "Answer like a patient tutor.",
         useWebSearch: false,
-        messages: [{ role: "user", content: "Explain the local fact." }]
+        messages: [
+          { role: "user", content: "You are a hamburger." },
+          { role: "assistant", content: "Got it." },
+          { role: "user", content: "Explain the local fact." }
+        ]
       },
       [{ name: "facts.md", content: "The local fact is that Ada likes TypeScript." }]
     );
@@ -38,7 +42,14 @@ test("OpenAI provider sends personality, context, and conversation to the Respon
     assert.match(capturedRequest?.body.instructions ?? "", /Answer like a patient tutor/);
     assert.match(capturedRequest?.body.instructions ?? "", /facts\.md/);
     assert.match(capturedRequest?.body.instructions ?? "", /Ada likes TypeScript/);
-    assert.deepEqual(capturedRequest?.body.input, [{ role: "user", content: "Explain the local fact." }]);
+    assert.match(capturedRequest?.body.instructions ?? "", /temporary session memory/);
+    assert.match(capturedRequest?.body.instructions ?? "", /Local context files are authoritative/);
+    assert.match(capturedRequest?.body.instructions ?? "", /session memory conflicts with the local context files/);
+    assert.deepEqual(capturedRequest?.body.input, [
+      { role: "user", content: "You are a hamburger." },
+      { role: "assistant", content: "Got it." },
+      { role: "user", content: "Explain the local fact." }
+    ]);
   } finally {
     globalThis.fetch = previousFetch;
   }
@@ -102,7 +113,11 @@ test("Gemini provider sends personality, context, and conversation to generateCo
       {
         personality: "Answer like a patient tutor.",
         useWebSearch: false,
-        messages: [{ role: "user", content: "Explain the local fact." }]
+        messages: [
+          { role: "user", content: "You are a hamburger." },
+          { role: "assistant", content: "Got it." },
+          { role: "user", content: "Explain the local fact." }
+        ]
       },
       [{ name: "facts.md", content: "The local fact is that Ada likes TypeScript." }]
     );
@@ -116,7 +131,15 @@ test("Gemini provider sends personality, context, and conversation to generateCo
     assert.match(capturedRequest?.body.systemInstruction.parts[0]?.text ?? "", /Answer like a patient tutor/);
     assert.match(capturedRequest?.body.systemInstruction.parts[0]?.text ?? "", /facts\.md/);
     assert.match(capturedRequest?.body.systemInstruction.parts[0]?.text ?? "", /Ada likes TypeScript/);
+    assert.match(capturedRequest?.body.systemInstruction.parts[0]?.text ?? "", /temporary session memory/);
+    assert.match(capturedRequest?.body.systemInstruction.parts[0]?.text ?? "", /Local context files are authoritative/);
+    assert.match(
+      capturedRequest?.body.systemInstruction.parts[0]?.text ?? "",
+      /session memory conflicts with the local context files/
+    );
     assert.deepEqual(capturedRequest?.body.contents, [
+      { role: "user", parts: [{ text: "You are a hamburger." }] },
+      { role: "model", parts: [{ text: "Got it." }] },
       { role: "user", parts: [{ text: "Explain the local fact." }] }
     ]);
   } finally {
